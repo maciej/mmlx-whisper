@@ -265,7 +265,7 @@ def transcribe(
     ):
         tokens = tokens.tolist()
         text_tokens = [token for token in tokens if token < tokenizer.eot]
-        return {
+        segment = {
             "seek": seek,
             "start": start,
             "end": end,
@@ -276,6 +276,9 @@ def transcribe(
             "compression_ratio": result.compression_ratio,
             "no_speech_prob": result.no_speech_prob,
         }
+        if result.candidates:
+            segment["candidates"] = result.candidates
+        return segment
 
     # show the progress bar when verbose is False (if True, transcribed text will be printed)
     with tqdm.tqdm(
@@ -536,8 +539,22 @@ def transcribe(
                 # update progress bar
                 pbar.update(min(content_frames, seek) - previous_seek)
 
-    return dict(
+    result = dict(
         text=tokenizer.decode(all_tokens[len(initial_prompt_tokens) :]),
         segments=all_segments,
         language=language,
     )
+    candidate_segments = [
+        {
+            "id": segment["id"],
+            "seek": segment["seek"],
+            "start": segment["start"],
+            "end": segment["end"],
+            "candidates": segment["candidates"],
+        }
+        for segment in all_segments
+        if segment.get("candidates")
+    ]
+    if candidate_segments:
+        result["candidate_segments"] = candidate_segments
+    return result

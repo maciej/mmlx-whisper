@@ -97,6 +97,25 @@ class TestBeamSearchIntegration(unittest.TestCase):
         self.assertEqual(len(results), 2)
         self.assertTrue(all(result.text for result in results))
 
+    def test_decode_returns_candidates_when_requested(self):
+        model = load_model(MODEL_NAME, mx.float16)
+        data = audio.pad_or_trim(audio.load_audio(TEST_AUDIO))
+        mel = audio.log_mel_spectrogram(data)
+
+        result = model.decode(
+            mel,
+            beam_size=2,
+            temperature=0.0,
+            without_timestamps=True,
+            language="en",
+            return_candidates=True,
+        )
+
+        self.assertTrue(result.candidates)
+        self.assertTrue(any(candidate["selected"] for candidate in result.candidates))
+        self.assertIn("score", result.candidates[0])
+        self.assertIn("tokens", result.candidates[0])
+
 
 if __name__ == "__main__":
     unittest.main()

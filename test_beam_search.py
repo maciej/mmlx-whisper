@@ -9,6 +9,7 @@ from mlx_whisper.decoding import (
     DecodingOptions,
     DecodingTask,
     GreedyDecoder,
+    MaximumLikelihoodRanker,
 )
 
 
@@ -143,6 +144,16 @@ class TestBeamSearchDecoder(unittest.TestCase):
 
 
 class TestBeamSearchIntegrationOptions(unittest.TestCase):
+    def test_ranker_scores_match_selected_candidate(self):
+        ranker = MaximumLikelihoodRanker(length_penalty=None)
+        tokens = [[[1, 2], [1, 2, 3]], [[4], [4, 5]]]
+        sum_logprobs = [[-1.0, -1.8], [-0.8, -1.0]]
+
+        scores = ranker.scores(tokens, sum_logprobs)
+
+        self.assertEqual(ranker.rank(tokens, sum_logprobs), [0, 1])
+        self.assertEqual(scores, [[-0.5, -0.6], [-0.8, -0.5]])
+
     def test_option_validation_and_beam_decoder_construction(self):
         model = SimpleNamespace(
             is_multilingual=False,

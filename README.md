@@ -1,8 +1,16 @@
-# Whisper
+# xmlx-whisper
 
 Speech recognition with Whisper in MLX. Whisper is a set of open source speech
 recognition models from OpenAI, ranging from 39 million to 1.5 billion
 parameters.[^1]
+
+This is a standalone continuation of the Whisper example from
+[`ml-explore/mlx-examples`](https://github.com/ml-explore/mlx-examples/tree/main/whisper),
+extracted from [`maciej/mlx-examples`](https://github.com/maciej/mlx-examples)
+with its Whisper-specific history. It retains the original MIT license and the
+`mlx-whisper` Python package and CLI names.
+
+This fork includes beam-search decoding plus optional ranked candidate output.
 
 ### Setup
 
@@ -13,11 +21,29 @@ Install [`ffmpeg`](https://ffmpeg.org/):
 brew install ffmpeg
 ```
 
-Install the `mlx-whisper` package with:
+To work on this standalone fork:
+
+```sh
+git clone https://github.com/maciej/xmlx-whisper.git
+cd xmlx-whisper
+uv venv
+uv pip install -e .
+```
+
+The upstream released `mlx-whisper` package can still be installed with:
 
 ```
 pip install mlx-whisper
 ```
+
+Run the beam-search test suite with:
+
+```sh
+uv pip install pytest
+uv run pytest -q test_beam_search.py test_beam_search_integration.py
+```
+
+The model-backed tests are opt-in with `RUN_MLX_WHISPER_INTEGRATION=1`.
 
 ### Run
 
@@ -34,6 +60,15 @@ This will make a text file `audio_file.txt` with the results.
 Use `-f` to specify the output format and `--model` to specify the model. There
 are many other supported command line options. To see them all, run
 `mlx_whisper -h`.
+
+Use beam search by setting `--beam-size` with a zero temperature:
+
+```sh
+mlx_whisper audio_file.mp3 --beam-size 5 --temperature 0
+```
+
+`--patience` and `--length-penalty` provide additional beam-search controls.
+See [BEAM_SEARCH_SPEC.md](BEAM_SEARCH_SPEC.md) for the decoding design.
 
 You can also pipe the audio content of other programs via stdin:
 
@@ -68,6 +103,24 @@ Whisper
 models](https://huggingface.co/collections/mlx-community/whisper-663256f9964fbb1177db93dc)
 are in the Hugging Face MLX Community.
 
+To inspect all ranked beam candidates for each decoded segment:
+
+```python
+result = mlx_whisper.transcribe(
+    speech_file,
+    path_or_hf_repo="mlx-community/whisper-tiny",
+    beam_size=5,
+    temperature=0.0,
+    return_candidates=True,
+)
+
+for candidate in result["segments"][0]["candidates"]:
+    print(candidate["rank"], candidate["score"], candidate["text"])
+```
+
+Segments include `candidates` only when requested. The transcription result also
+includes a compact `candidate_segments` view when candidates are present.
+
 The `transcribe` function also supports word-level timestamps. You can generate
 these with:
 
@@ -89,14 +142,14 @@ To see more transcription options use:
 > Face Hub. There are a few available in the [MLX
 > Community](https://huggingface.co/mlx-community) organization.
 
-To convert a model, first clone the MLX Examples repo:
+To convert a model, clone this repository:
 
 ```
-git clone https://github.com/ml-explore/mlx-examples.git
+git clone https://github.com/maciej/xmlx-whisper.git
+cd xmlx-whisper
 ```
 
-Then run `convert.py` from `mlx-examples/whisper`. For example, to convert the
-`tiny` model use:
+Then run `convert.py`. For example, to convert the `tiny` model use:
 
 ```
 python convert.py --torch-name-or-path tiny --mlx-path mlx_models/tiny
