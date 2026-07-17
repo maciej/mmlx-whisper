@@ -22,7 +22,7 @@ setup(
     long_description_content_type="text/markdown",
     author_email="mlx@group.apple.com",
     author="MLX Contributors",
-    url="https://github.com/maciej/xmlx-whisper",
+    url="https://github.com/maciej/mmlx-whisper",
     license="MIT",
     install_requires=requirements,
     packages=find_namespace_packages(),

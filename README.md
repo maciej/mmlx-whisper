@@ -1,4 +1,4 @@
-# xmlx-whisper
+# mmlx-whisper
 
 Speech recognition with Whisper in MLX. Whisper is a set of open source speech
 recognition models from OpenAI, ranging from 39 million to 1.5 billion
@@ -24,8 +24,8 @@ brew install ffmpeg
 To work on this standalone fork:
 
 ```sh
-git clone https://github.com/maciej/xmlx-whisper.git
-cd xmlx-whisper
+git clone https://github.com/maciej/mmlx-whisper.git
+cd mmlx-whisper
 uv venv
 uv pip install -e .
 ```
@@ -145,8 +145,8 @@ To see more transcription options use:
 To convert a model, clone this repository:
 
 ```
-git clone https://github.com/maciej/xmlx-whisper.git
-cd xmlx-whisper
+git clone https://github.com/maciej/mmlx-whisper.git
+cd mmlx-whisper
 ```
 
 Then run `convert.py`. For example, to convert the `tiny` model use:
