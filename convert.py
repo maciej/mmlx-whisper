@@ -267,17 +267,25 @@ library_name: mlx
 # {name}
 This model was converted to MLX format from [`{torch_name_or_path}`]().
 
-## Use with mlx
+## Use with mmlx-whisper
+
+Install the standalone [mmlx-whisper fork](https://github.com/maciej/mmlx-whisper)
+in a virtual environment. Its Python import is `mlx_whisper` and its CLI
+command is `mmlx_whisper`.
+
 ```bash
-pip install mlx-whisper
+uv venv
+uv pip install "git+https://github.com/maciej/mmlx-whisper.git"
 ```
+
+Run Python with `uv run python` in the same directory to use this environment.
 
 ```python
 import mlx_whisper
 
 result = mlx_whisper.transcribe(
     "FILE_NAME",
-    path_or_hf_repo={repo_id},
+    path_or_hf_repo={repo_id!r},
 )
 ```
 """

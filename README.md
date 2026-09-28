@@ -4,46 +4,56 @@ Speech recognition with Whisper in MLX. Whisper is a set of open source speech
 recognition models from OpenAI, ranging from 39 million to 1.5 billion
 parameters.[^1]
 
-This is a standalone continuation of the Whisper example from
+`mmlx-whisper` is a standalone fork of `mlx-whisper`, the Whisper example from
 [`ml-explore/mlx-examples`](https://github.com/ml-explore/mlx-examples/tree/main/whisper),
 extracted from [`maciej/mlx-examples`](https://github.com/maciej/mlx-examples)
-with its Whisper-specific history. It retains the original MIT license and the
-`mlx-whisper` Python package and CLI names.
+with its Whisper-specific history. This repository contains the package,
+CLI, model conversion script, and tests; it can be installed and developed
+independently of the MLX Examples repository. It retains the original MIT
+license. Its package and command names are:
+
+- Python distribution: `mlx-whisper`
+- Python import: `mlx_whisper`
+- CLI command: `mmlx_whisper`
 
 This fork includes beam-search decoding plus optional ranked candidate output.
 
 ### Setup
 
-Install [`ffmpeg`](https://ffmpeg.org/):
+On macOS with Apple silicon, install [`ffmpeg`](https://ffmpeg.org/):
 
 ```
 # on macOS using Homebrew (https://brew.sh/)
 brew install ffmpeg
 ```
 
-To work on this standalone fork:
+Install this fork from its own repository using `uv`:
 
 ```sh
 git clone https://github.com/maciej/mmlx-whisper.git
 cd mmlx-whisper
-uv venv
-uv pip install -e .
+uv sync
 ```
 
-The upstream released `mlx-whisper` package can still be installed with:
+`uv sync` creates `.venv`, installs the fork in editable mode, and installs its
+runtime and development dependencies from `pyproject.toml` and `uv.lock`.
+Changes in this checkout are used by the API and CLI. Use `uv run` for commands
+throughout this repository; it uses the project's environment automatically.
 
-```
-pip install mlx-whisper
-```
+The fork shares its distribution and import names with upstream. Use a separate
+virtual environment for this checkout to keep the installations distinct.
 
-Run the beam-search test suite with:
+### Development and tests
+
+From the repository root, run the beam-search test suite with:
 
 ```sh
-uv pip install pytest
 uv run pytest -q test_beam_search.py test_beam_search_integration.py
 ```
 
-The model-backed tests are opt-in with `RUN_MLX_WHISPER_INTEGRATION=1`.
+The model-backed tests are opt-in with `RUN_MLX_WHISPER_INTEGRATION=1` and may
+download a model. See [the beam-search guide](docs/beam-search.md#verification)
+for the integration command and coverage.
 
 ### Run
 
@@ -52,28 +62,29 @@ The model-backed tests are opt-in with `RUN_MLX_WHISPER_INTEGRATION=1`.
 At its simplest:
 
 ```sh
-mlx_whisper audio_file.mp3
+uv run mmlx_whisper audio_file.mp3
 ```
 
 This will make a text file `audio_file.txt` with the results.
 
 Use `-f` to specify the output format and `--model` to specify the model. There
 are many other supported command line options. To see them all, run
-`mlx_whisper -h`.
+`uv run mmlx_whisper -h`.
 
 Use beam search by setting `--beam-size` with a zero temperature:
 
 ```sh
-mlx_whisper audio_file.mp3 --beam-size 5 --temperature 0
+uv run mmlx_whisper audio_file.mp3 --beam-size 5 --temperature 0
 ```
 
 `--patience` and `--length-penalty` provide additional beam-search controls.
-See [BEAM_SEARCH_SPEC.md](BEAM_SEARCH_SPEC.md) for the decoding design.
+See [docs/beam-search.md](docs/beam-search.md) for the current implementation
+and its design history.
 
 You can also pipe the audio content of other programs via stdin:
 
 ```sh
-some-process | mlx_whisper -
+some-process | uv run mmlx_whisper -
 ```
 
 The default output file name will be `content.*`. You can specify the name with
@@ -142,17 +153,11 @@ To see more transcription options use:
 > Face Hub. There are a few available in the [MLX
 > Community](https://huggingface.co/mlx-community) organization.
 
-To convert a model, clone this repository:
+After following the setup above, run `convert.py` with `uv run` from this
+repository's root. For example, to convert the `tiny` model use:
 
 ```
-git clone https://github.com/maciej/mmlx-whisper.git
-cd mmlx-whisper
-```
-
-Then run `convert.py`. For example, to convert the `tiny` model use:
-
-```
-python convert.py --torch-name-or-path tiny --mlx-path mlx_models/tiny
+uv run python convert.py --torch-name-or-path tiny --mlx-path mlx_models/tiny
 ```
 
 Note you can also convert a local PyTorch checkpoint which is in the original
@@ -161,11 +166,11 @@ OpenAI format.
 To generate a 4-bit quantized model, use `-q`. For a full list of options:
 
 ```
-python convert.py --help
+uv run python convert.py --help
 ```
 
 By default, the conversion script will make the directory `mlx_models`
-and save the converted `weights.npz` and `config.json` there.
+and save the converted `model.safetensors` and `config.json` there.
 
 Each time it is run, `convert.py` will overwrite any model in the provided
 path. To save different models, make sure to set `--mlx-path` to a unique
@@ -173,9 +178,9 @@ directory for each converted model. For example:
 
 ```bash
 model="tiny"
-python convert.py --torch-name-or-path ${model} --mlx-path mlx_models/${model}_fp16
-python convert.py --torch-name-or-path ${model} --dtype float32 --mlx-path mlx_models/${model}_fp32
-python convert.py --torch-name-or-path ${model} -q --q_bits 4 --mlx-path mlx_models/${model}_quantized_4bits
+uv run python convert.py --torch-name-or-path ${model} --mlx-path mlx_models/${model}_fp16
+uv run python convert.py --torch-name-or-path ${model} --dtype float32 --mlx-path mlx_models/${model}_fp32
+uv run python convert.py --torch-name-or-path ${model} -q --q-bits 4 --mlx-path mlx_models/${model}_quantized_4bits
 ```
 
 [^1]: Refer to the [arXiv paper](https://arxiv.org/abs/2212.04356), [blog post](https://openai.com/research/whisper), and [code](https://github.com/openai/whisper) for more details.

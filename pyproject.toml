@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mlx-whisper"
+dynamic = ["version", "dependencies"]
+description = "OpenAI Whisper on Apple silicon with MLX and the Hugging Face Hub"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "MLX Contributors", email = "mlx@group.apple.com" }]
+
+[project.urls]
+Repository = "https://github.com/maciej/mmlx-whisper"
+
+[project.scripts]
+mmlx_whisper = "mlx_whisper.cli:main"
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["mlx_whisper*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "mlx_whisper._version.__version__" }
+dependencies = { file = ["mlx_whisper/requirements.txt"] }

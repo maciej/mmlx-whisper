@@ -27,6 +27,7 @@ def build_parser():
             raise ValueError(f"Expected one of {set(str2val.keys())}, got {string}")
 
     parser = argparse.ArgumentParser(
+        prog="mmlx_whisper",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
