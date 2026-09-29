@@ -50,21 +50,24 @@ The related options follow OpenAI Whisper's decoding API:
 ## Current implementation
 
 [`DecodingTask`](../mlx_whisper/decoding.py) selects `BeamSearchDecoder`
-whenever `beam_size` is present. The initial token sequence and encoded audio
-features are repeated by the beam group size, while the original per-audio
-features are retained for the final `DecodingResult`.
+whenever `beam_size` is present. The initial token sequence is repeated by the
+beam group size. Encoder features and cross-attention keys/values stay per audio
+item; attention broadcasts them over that item's contiguous group of hypotheses.
+This layout also supports `best_of` sampling and distinct audio items in a batch.
 
 On every decoding step:
 
 1. The existing blank, token-suppression, and timestamp filters are applied to
    the logits.
 2. Log probabilities are calculated in `float32`.
-3. Each active beam contributes its best `beam_size + 1` token extensions.
+3. MLX selects each beam's best `beam_size + 1` token extensions. Only these
+   token IDs and scores, token histories and cumulative scores cross to NumPy.
 4. Candidate sequences are deduplicated and ranked by cumulative log
    probability for each audio item.
 5. EOT-terminated candidates move to a per-audio finished set. The best
    `beam_size` unfinished candidates remain active.
-6. The decoder KV cache is reordered to match the selected parent rows.
+6. Self-attention KV is reordered to match the selected parent rows.
+   Cross-attention KV remains shared per audio item.
 7. Decoding completes when every audio item has
    `round(beam_size * patience)` finished candidates, or when the normal sample
    length/context limit is reached.
@@ -80,6 +83,12 @@ Final selection remains the responsibility of `MaximumLikelihoodRanker`.
 Without an explicit `length_penalty`, it uses average log probability. With a
 penalty, it uses the Google NMT length-penalty formula. Ranked candidate output
 uses the same scores as final selection.
+
+Equal token scores use increasing token ID as a deterministic tie-breaker;
+equally scoring duplicate sequences retain the first parent encountered.
+Cumulative-score sorting retains insertion order for ties. Scores are not
+perturbed, and compatibility with the old NumPy sort's incidental tie ordering
+is not required.
 
 During transcription fallback, beam search and patience are removed when a
 non-zero temperature is attempted. At temperature zero, `best_of` is removed.
@@ -100,12 +109,11 @@ in particular:
 The implementation ports those semantics rather than copying the PyTorch code
 line for line. The main MLX-specific adaptations are:
 
-- candidate logits and cumulative scores are materialized and ranked through
-  NumPy after `mx.eval()`; this favors deterministic correctness over keeping
-  the entire beam loop on-device;
-- audio features are explicitly broadcast to the grouped beam batch instead of
-  relying on single-audio broadcasting;
-- selected parent indices are applied to MLX's tree-structured KV cache;
+- candidate selection uses a stable MLX sort, with only compact candidates
+  materialized after `mx.eval()` for Python hypothesis management;
+- queries are grouped by audio item to broadcast shared cross-attention K/V
+  without duplicating it across beams;
+- selected parent indices are applied only to the self-attention KV cache;
 - ragged finished sequences are converted back to dense EOT-padded MLX arrays
   for the existing result pipeline;
 - optional ranked candidate metadata was added as a mmlx-whisper extension.
@@ -128,12 +136,16 @@ covers:
 - KV-cache reorder indices;
 - isolation between multiple audio items;
 - option validation and final ranking;
-- unchanged greedy argmax behavior.
+- unchanged greedy argmax behavior;
+- tied/EOT and suppressed candidates;
+- shared-cache storage and attention equivalence after repeated parent selection.
 
 The opt-in model-backed suite in
 [`test_beam_search_integration.py`](../test_beam_search_integration.py) covers
 the Python transcription path with and without timestamps, the CLI, batched
-decode, and ranked candidate output. After following the README setup, run from
+decode, ranked candidate output, distinct speech/silence batches, sampled
+`best_of` groups, forced temperature fallback and word timestamps.
+After following the README setup, run from
 the repository root:
 
 ```sh
@@ -146,12 +158,18 @@ It uses `mlx-community/whisper-tiny` by default. Set
 
 ## Known trade-offs
 
-Beam expansion currently crosses from MLX to NumPy once per decoding step. This
-is straightforward and tested, but it introduces synchronization and CPU work
-in the hot loop. Moving top-candidate selection, pruning, and bookkeeping
-further into MLX is the main performance optimization left; it should preserve
-the ordering and KV-cache invariants covered by the unit tests.
+Beam expansion still synchronizes once per step to materialize compact candidates
+and token histories. Python manages sequence deduplication, pruning and finished
+hypotheses. MLX selection currently sorts the vocabulary on the device; in MLX
+0.32.2, `argpartition` also uses a full GPU sort. A fused small-k selector and less
+token-history copying are possible follow-ups if further profiling justifies them.
 
 The model-backed suite is a functional smoke test, not a quality or performance
-benchmark. The repository does not currently include a dataset-level WER
-comparison or a repeatable greedy-versus-beam benchmark.
+benchmark. The [beam-search investigation](beam-search-investigation.md) includes
+a repeatable benchmark for candidate selection and cross-attention cache sharing,
+with measured time and memory on tiny and medium. The
+[production validation](beam-search-validation.md) records the implemented gains
+and batch/fallback/alignment checks. Use `--variant production` for
+the current implementation or `--variant baseline` for the frozen pre-optimization
+selection and expanded cache layout. Dataset-level WER and a
+repeatable greedy-versus-beam comparison remain future work.

@@ -145,9 +145,13 @@ class Inference:
 
     def rearrange_kv_cache(self, source_indices):
         """Update the key-value cache according to the updated beams"""
-        # update the key/value cache to contain the selected sequences
+        # Parents only move within their audio group. Cross-attention K/V is
+        # stored once per audio item; only self-attention follows beam parents.
         if source_indices != list(range(len(source_indices))):
-            self.kv_cache = tree_map(lambda x: x[source_indices], self.kv_cache)
+            self.kv_cache = [
+                (tree_map(lambda x: x[source_indices], self_kv), cross_kv)
+                for self_kv, cross_kv in self.kv_cache
+            ]
 
     def reset(self):
         self.kv_cache = None
@@ -335,9 +339,14 @@ class BeamSearchDecoder(TokenDecoder):
             logits.astype(mx.float32), axis=-1, keepdims=True
         )
 
-        mx.eval(tokens, logprobs, sum_logprobs)
+        # MLX's stable sort gives equal scores ascending token-ID order. Keep
+        # scores unmodified and transfer only the candidates, not the vocabulary.
+        top_indices = mx.argsort(-logprobs, axis=-1)[:, : self.beam_size + 1]
+        top_logprobs = mx.take_along_axis(logprobs, top_indices, axis=-1)
+        mx.eval(tokens, top_indices, top_logprobs, sum_logprobs)
         tokens_np = np.array(tokens)
-        logprobs_np = np.array(logprobs)
+        top_indices_np = np.array(top_indices)
+        top_logprobs_np = np.array(top_logprobs)
         sum_logprobs_np = np.array(sum_logprobs)
 
         next_tokens = []
@@ -353,10 +362,8 @@ class BeamSearchDecoder(TokenDecoder):
             for j in range(self.beam_size):
                 idx = i * self.beam_size + j
                 prefix = tokens_np[idx].tolist()
-                row = logprobs_np[idx]
-                top_indices = np.argsort(row)[-(self.beam_size + 1) :][::-1]
-                for token in top_indices:
-                    score = float(sum_logprobs_np[idx] + row[token])
+                for token, logprob in zip(top_indices_np[idx], top_logprobs_np[idx]):
+                    score = float(sum_logprobs_np[idx] + logprob)
                     sequence = tuple(prefix + [int(token)])
                     if sequence not in scores or score > scores[sequence]:
                         scores[sequence] = score
@@ -808,23 +815,9 @@ class DecodingTask:
                 tokens, [n_audio, self.n_group, len(self.initial_tokens)]
             )
             tokens = tokens.reshape((n_audio * self.n_group, len(self.initial_tokens)))
-            audio_features = audio_features[:, None, :, :]
-            audio_features = mx.broadcast_to(
-                audio_features,
-                [
-                    n_audio,
-                    self.n_group,
-                    original_audio_features.shape[1],
-                    original_audio_features.shape[2],
-                ],
-            )
-            audio_features = audio_features.reshape(
-                (
-                    n_audio * self.n_group,
-                    original_audio_features.shape[1],
-                    original_audio_features.shape[2],
-                )
-            )
+
+        # Keep features and cross-attention K/V per audio item. Attention groups
+        # the contiguous hypotheses for each audio without duplicating K/V.
 
         # call the main sampling loop
         tokens, sum_logprobs, no_speech_probs = self._main_loop(audio_features, tokens)

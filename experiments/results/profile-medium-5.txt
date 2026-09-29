@@ -1,0 +1,82 @@
+baseline
+         53084 function calls (48860 primitive calls) in 1.766 seconds
+
+   Ordered by: internal time
+   List reduced from 97 to 12 due to restriction <12>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+       28    1.369    0.049    1.740    0.062 decoding.py:324(update)
+      140    0.362    0.003    0.362    0.003 {method 'argsort' of 'numpy.ndarray' objects}
+     1344    0.008    0.000    0.008    0.000 whisper.py:73(qkv_attention)
+     5424    0.006    0.000    0.006    0.000 linear.py:65(__call__)
+       86    0.003    0.000    0.003    0.000 {built-in method numpy.array}
+      672    0.003    0.000    0.024    0.000 whisper.py:107(__call__)
+     1344    0.002    0.000    0.016    0.000 whisper.py:49(__call__)
+     2044    0.002    0.000    0.003    0.000 normalization.py:125(__call__)
+    14469    0.002    0.000    0.002    0.000 base.py:99(__getattr__)
+     1056    0.002    0.000    0.002    0.000 decoding.py:150(<lambda>)
+  1859/11    0.001    0.000    0.004    0.000 utils.py:8(tree_map)
+ 2651/275    0.001    0.000    0.004    0.000 utils.py:48(<genexpr>)
+
+
+compact
+         52412 function calls (48188 primitive calls) in 1.412 seconds
+
+   Ordered by: internal time
+   List reduced from 96 to 12 due to restriction <12>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+       28    1.340    0.048    1.350    0.048 beam_search.py:61(compact_update)
+     1344    0.020    0.000    0.020    0.000 whisper.py:73(qkv_attention)
+     5424    0.014    0.000    0.014    0.000 linear.py:65(__call__)
+      672    0.007    0.000    0.056    0.000 whisper.py:107(__call__)
+     1344    0.005    0.000    0.037    0.000 whisper.py:49(__call__)
+     2044    0.004    0.000    0.006    0.000 normalization.py:125(__call__)
+    14469    0.004    0.000    0.006    0.000 base.py:99(__getattr__)
+     1056    0.003    0.000    0.003    0.000 decoding.py:150(<lambda>)
+ 2651/275    0.002    0.000    0.008    0.000 utils.py:48(<genexpr>)
+  1859/11    0.002    0.000    0.008    0.001 utils.py:8(tree_map)
+    14469    0.002    0.000    0.002    0.000 {method 'get' of 'dict' objects}
+       28    0.002    0.000    0.058    0.002 whisper.py:176(__call__)
+
+
+cache
+         45504 function calls (44976 primitive calls) in 1.266 seconds
+
+   Ordered by: internal time
+   List reduced from 96 to 12 due to restriction <12>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+       28    1.198    0.043    1.205    0.043 beam_search.py:61(compact_update)
+     1344    0.020    0.000    0.020    0.000 whisper.py:73(qkv_attention)
+     5424    0.014    0.000    0.014    0.000 linear.py:65(__call__)
+      672    0.007    0.000    0.056    0.000 whisper.py:107(__call__)
+     1344    0.005    0.000    0.037    0.000 whisper.py:49(__call__)
+     2044    0.004    0.000    0.006    0.000 normalization.py:125(__call__)
+    14469    0.004    0.000    0.006    0.000 base.py:99(__getattr__)
+    14469    0.002    0.000    0.002    0.000 {method 'get' of 'dict' objects}
+      528    0.002    0.000    0.002    0.000 beam_search.py:115(<lambda>)
+       28    0.002    0.000    0.058    0.002 whisper.py:176(__call__)
+  792/264    0.001    0.000    0.004    0.000 utils.py:8(tree_map)
+      114    0.001    0.000    0.001    0.000 {built-in method numpy.array}
+
+
+shared
+         46848 function calls (46320 primitive calls) in 0.635 seconds
+
+   Ordered by: internal time
+   List reduced from 97 to 12 due to restriction <12>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+       28    0.588    0.021    0.593    0.021 beam_search.py:61(compact_update)
+     1344    0.014    0.000    0.014    0.000 whisper.py:73(qkv_attention)
+     5424    0.008    0.000    0.008    0.000 linear.py:65(__call__)
+      672    0.005    0.000    0.039    0.000 whisper.py:107(__call__)
+     1344    0.004    0.000    0.025    0.000 whisper.py:49(__call__)
+    14469    0.003    0.000    0.005    0.000 base.py:99(__getattr__)
+     2044    0.003    0.000    0.004    0.000 normalization.py:125(__call__)
+    14469    0.001    0.000    0.001    0.000 {method 'get' of 'dict' objects}
+       28    0.001    0.000    0.040    0.001 whisper.py:176(__call__)
+      528    0.001    0.000    0.001    0.000 beam_search.py:115(<lambda>)
+  792/264    0.001    0.000    0.003    0.000 utils.py:8(tree_map)
+      792    0.001    0.000    0.002    0.000 utils.py:48(<genexpr>)

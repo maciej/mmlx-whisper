@@ -198,5 +198,67 @@ class TestBeamSearchIntegrationOptions(unittest.TestCase):
         self.assertFalse(completed)
 
 
+class TestSharedBeamCache(unittest.TestCase):
+    def test_ties_include_eot_and_keep_unique_candidates(self):
+        inference = FakeInference()
+        decoder = BeamSearchDecoder(3, 2, inference, patience=2)
+        tokens, completed, scores = decoder.update(
+            mx.array([[9], [9], [9]]), mx.zeros((3, 10)), mx.zeros(3)
+        )
+        self.assertEqual(tokens.tolist(), [[9, 0], [9, 1], [9, 3]])
+        self.assertEqual(inference.rearrange_calls, [[0, 0, 0]])
+        self.assertIn((9, 2), decoder.finished_sequences[0])
+        self.assertFalse(completed)
+        np.testing.assert_allclose(scores.tolist(), [-np.log(10)] * 3, atol=1e-6)
+
+    def test_suppressed_tail_does_not_repeat_candidate_ids(self):
+        decoder = BeamSearchDecoder(3, 9, FakeInference())
+        logits = mx.array([[0.] + [-float('inf')] * 9] * 3)
+        tokens, _, _ = decoder.update(mx.array([[8]] * 3), logits, mx.zeros(3))
+        self.assertEqual(tokens.tolist(), [[8, 0], [8, 1], [8, 2]])
+
+    def test_shared_cache_matches_expanded_cache_after_repeated_parents(self):
+        from mlx_whisper.decoding import Inference
+        from mlx_whisper.whisper import TextDecoder
+        mx.random.seed(7)
+        decoder = TextDecoder(32, 16, 8, 2, 2, dtype=mx.float32)
+        features = mx.random.normal((2, 5, 8))
+        expanded = mx.repeat(features, 3, axis=0)
+        tokens = mx.array([[0, 1], [0, 2], [0, 3], [4, 5], [4, 6], [4, 7]])
+        inference = Inference(SimpleNamespace(decoder=decoder))
+        actual = inference.logits(tokens, features)
+        expected, reference_cache, _ = decoder(tokens, expanded)
+        np.testing.assert_allclose(actual, expected, atol=2e-5, rtol=2e-5)
+        cross_cache = [cross for _, cross in inference.kv_cache]
+        for self_kv, cross_kv in inference.kv_cache:
+            self.assertEqual(self_kv[0].shape[0], 6)
+            self.assertEqual(cross_kv[0].shape[0], 2)
+            self.assertEqual(cross_kv[1].shape[0], 2)
+        parents = [2, 0, 2, 5, 5, 3]
+        inference.rearrange_kv_cache(parents)
+        from mlx.utils import tree_map
+        reference_cache = tree_map(lambda x: x[parents], reference_cache)
+        for (_, cross_kv), old in zip(inference.kv_cache, cross_cache):
+            self.assertIs(cross_kv, old)
+        next_tokens = mx.array([[8], [9], [10], [11], [12], [13]])
+        actual = inference.logits(next_tokens, features)
+        expected, _, _ = decoder(next_tokens, expanded, reference_cache)
+        np.testing.assert_allclose(actual, expected, atol=2e-5, rtol=2e-5)
+
+    def test_grouped_attention_preserves_alignment_scores(self):
+        from mlx_whisper.whisper import MultiHeadAttention
+        mx.random.seed(17)
+        attention = MultiHeadAttention(8, 2)
+        q = mx.random.normal((6, 4, 8))
+        k = mx.random.normal((2, 5, 8))
+        v = mx.random.normal((2, 5, 8))
+        actual, qk = attention.qkv_attention(q, k, v)
+        expected, expected_qk = attention.qkv_attention(
+            q, mx.repeat(k, 3, axis=0), mx.repeat(v, 3, axis=0)
+        )
+        np.testing.assert_allclose(actual, expected, atol=2e-5, rtol=2e-5)
+        np.testing.assert_allclose(qk, expected_qk, atol=2e-5, rtol=2e-5)
+
+
 if __name__ == "__main__":
     unittest.main()
