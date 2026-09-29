@@ -72,17 +72,32 @@ class MultiHeadAttention(nn.Module):
 
     def qkv_attention(self, q, k, v, mask=None):
         n_batch, n_ctx, n_state = q.shape
+        n_audio = k.shape[0]
+        if n_batch % n_audio:
+            raise ValueError("Query batch must be divisible by key/value batch")
+        n_group = n_batch // n_audio
         scale = (n_state // self.n_head) ** -0.25
         q = q.reshape(*q.shape[:2], self.n_head, -1).transpose(0, 2, 1, 3) * scale
         k = k.reshape(*k.shape[:2], self.n_head, -1).transpose(0, 2, 3, 1) * scale
         v = v.reshape(*v.shape[:2], self.n_head, -1).transpose(0, 2, 1, 3)
+
+        if n_group > 1:
+            # [audio, hypothesis, head, token, channel] queries attend to
+            # [audio, 1, head, channel, frame] keys. Self-attention has group 1.
+            q = q.reshape(n_audio, n_group, *q.shape[1:])
+            k = k[:, None]
+            v = v[:, None]
 
         qk = q @ k
         if mask is not None:
             qk = qk + mask[:n_ctx, :n_ctx]
 
         w = mx.softmax(qk, axis=-1, precise=True)
-        out = (w @ v).transpose(0, 2, 1, 3)
+        out = w @ v
+        if n_group > 1:
+            out = out.reshape(n_batch, self.n_head, n_ctx, -1)
+            qk = qk.reshape(n_batch, self.n_head, n_ctx, -1)
+        out = out.transpose(0, 2, 1, 3)
         out = out.reshape(n_batch, n_ctx, n_state)
         return out, qk
 
@@ -177,8 +192,9 @@ class TextDecoder(nn.Module):
         """
         x : mx.array, shape = (batch_size, <= n_ctx)
             the text tokens
-        xa : mx.array, shape = (batch_size, n_audio_ctx, n_audio_state)
-            the encoded audio features to be attended on
+        xa : mx.array, shape = (n_audio, n_audio_ctx, n_audio_state)
+            encoded audio features; batch_size may contain multiple contiguous
+            hypotheses per audio item, sharing its cross-attention K/V
         """
         offset = kv_cache[0][0][0].shape[1] if kv_cache else 0
         x = (
