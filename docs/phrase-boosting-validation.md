@@ -160,3 +160,9 @@ and multi-step reward/state checks with two audio inputs and beam sizes 1, 3, an
 The declared Python minimum remains 3.8; this run does not establish runtime
 compatibility on every supported Python version. The historical public-dataset
 benchmarks above were not rerun for this rebase.
+
+After rebasing onto recorder/test-layout merge `ce7994a`, all phrase tests live
+under `tests/` and are discovered by the default command. Running
+`RUN_MLX_WHISPER_INTEGRATION=1 uv run python -m pytest -q` passed 94 tests with
+1 skipped on the same host. The legacy numerical suite `tests/test.py` remains
+an explicitly selected suite, as configured by the recorder change.
