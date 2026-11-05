@@ -59,8 +59,6 @@ The legacy conversion and numerical suite remains explicitly runnable with
 
 ### Run
 
-To record local evaluation clips, see the [recorder guide](docs/recording.md).
-
 #### CLI
 
 At its simplest:
@@ -151,6 +149,10 @@ To see more transcription options use:
 ```
 >>> help(mlx_whisper.transcribe)
 ```
+
+### Tools
+
+Record local evaluation clips with the standalone [recorder](docs/recording.md).
 
 ### Converting models
 
