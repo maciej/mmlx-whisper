@@ -20,7 +20,7 @@ pytestmark = pytest.mark.skipif(
     os.getenv("RUN_MLX_WHISPER_INTEGRATION") != "1", reason="opt-in model integration"
 )
 MODEL = os.getenv("MLX_WHISPER_TEST_MODEL", "mlx-community/whisper-tiny")
-AUDIO = str(Path(__file__).parent / "mlx_whisper/assets/ls_test.flac")
+AUDIO = str(Path(__file__).resolve().parents[1] / "mlx_whisper/assets/ls_test.flac")
 
 
 @pytest.fixture(scope="module")

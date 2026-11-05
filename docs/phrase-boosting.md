@@ -131,9 +131,9 @@ uses standard MLX operations; no custom Metal kernels are required.
 ## Validation and reproducible benchmarks
 
 ```sh
-uv run pytest -q test_boosting.py test_boosting_evaluation.py test_beam_search.py
+uv run pytest -q tests/test_boosting.py tests/test_boosting_evaluation.py tests/test_beam_search.py
 RUN_MLX_WHISPER_INTEGRATION=1 uv run pytest -q \
-  test_boosting_integration.py test_beam_search_integration.py
+  tests/test_boosting_integration.py tests/test_beam_search_integration.py
 uv run python scripts/benchmark_phrase_scorer.py --output /tmp/scorer.json
 ```
 

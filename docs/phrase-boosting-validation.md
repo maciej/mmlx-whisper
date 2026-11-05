@@ -119,12 +119,12 @@ increase fallback traversal work. [Raw summary](validation/phrase-scorer.json).
 Final regression command (with `RUN_MLX_WHISPER_INTEGRATION=1`):
 
 ```sh
-uv run pytest -q test_boosting.py test_boosting_evaluation.py \
-  test_beam_search.py test_boosting_integration.py test_beam_search_integration.py test.py
+uv run pytest -q tests/test_boosting.py tests/test_boosting_evaluation.py \
+  tests/test_beam_search.py tests/test_boosting_integration.py tests/test_beam_search_integration.py tests/test.py
 ```
 
 **60 passed, 3 failed.** All **52 focused phrase/beam/metric/integration tests
-passed**. The three failures are existing numerical checks in `test.py`:
+passed**. The three failures are existing numerical checks in `tests/test.py`:
 `test_decode_greedy` (no-speech probability expectation), `test_decode_lang`
 (language probability expectation), and `test_torch_mlx` (cross-backend numerical
 comparison). All three reproduced on an untouched archive of the baseline commit
@@ -150,8 +150,8 @@ environment (Python 3.13.13, MLX 0.32.2), the following passed **71 tests**:
 
 ```sh
 RUN_MLX_WHISPER_INTEGRATION=1 uv run python -m pytest -q \
-  test_boosting.py test_boosting_evaluation.py test_boosting_integration.py \
-  test_beam_search.py test_beam_selection.py test_beam_search_integration.py
+  tests/test_boosting.py tests/test_boosting_evaluation.py tests/test_boosting_integration.py \
+  tests/test_beam_search.py tests/test_beam_selection.py tests/test_beam_search_integration.py
 ```
 
 This includes the upstream real-audio baseline candidate equivalence and shared

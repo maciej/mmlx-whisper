@@ -22,7 +22,7 @@ from mlx_whisper.decoding import (
     DecodingTask,
 )
 from mlx_whisper.tokenizer import get_tokenizer
-from test_beam_search import FakeInference
+from tests.test_beam_search import FakeInference
 
 
 def scorer(sequences=((1, 2, 3), (1, 2, 4), (3,)), strength=0.1):
