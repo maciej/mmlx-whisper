@@ -6,7 +6,7 @@ import pytest
 from experiments.beam_search import compact_update, select_candidates, self_cache_reorder
 from mlx_whisper.decoding import BeamSearchDecoder, Inference
 from experiments.beam_reference import baseline_update
-from test_beam_search import FakeInference
+from tests.test_beam_search import FakeInference
 
 
 @pytest.mark.parametrize("update", [BeamSearchDecoder.update, compact_update],

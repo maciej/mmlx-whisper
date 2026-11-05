@@ -146,7 +146,7 @@ score, length, EOT metadata, timestamp presence, and compression ratio.
 Run deterministic tests without model or dataset downloads:
 
 ```sh
-uv run pytest -q test_beam_search.py test_beam_selection.py
+uv run pytest -q tests/test_beam_search.py tests/test_beam_selection.py
 ```
 
 The tests cover expansion, duplicate winners, ties, suppression, EOT cutoff,
@@ -158,7 +158,7 @@ Model-backed tests are opt-in and default to `mlx-community/whisper-tiny`, using
 the repository's audio fixture:
 
 ```sh
-RUN_MLX_WHISPER_INTEGRATION=1 uv run pytest -q test_beam_search_integration.py
+RUN_MLX_WHISPER_INTEGRATION=1 uv run pytest -q tests/test_beam_search_integration.py
 ```
 
 They cover API and CLI transcription, timestamps, batch decoding, candidate

@@ -4,7 +4,7 @@ import numpy as np
 import mlx.core as mx
 from benchmarks.beam_selection.baseline_decoding import BeamSearchDecoder as Reference
 from mlx_whisper.decoding import BeamSearchDecoder, Inference, GreedyDecoder
-from test_beam_search import FakeInference
+from tests.test_beam_search import FakeInference
 
 
 class TestSelection(unittest.TestCase):

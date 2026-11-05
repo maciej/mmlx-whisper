@@ -15,7 +15,7 @@ from mlx_whisper.load_models import load_model
 RUN_INTEGRATION = os.environ.get("RUN_MLX_WHISPER_INTEGRATION") == "1"
 MODEL_NAME = os.environ.get("MLX_WHISPER_TEST_MODEL", "mlx-community/whisper-tiny")
 TEST_AUDIO = os.path.join(
-    os.path.dirname(__file__), "mlx_whisper", "assets", "ls_test.flac"
+    os.path.dirname(os.path.dirname(__file__)), "mlx_whisper", "assets", "ls_test.flac"
 )
 
 

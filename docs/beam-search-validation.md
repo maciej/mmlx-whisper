@@ -93,7 +93,7 @@ The shared-cache implementation has no single-audio restriction. The standalone
 uv sync --locked
 RUN_MLX_WHISPER_INTEGRATION=1 \
   MLX_WHISPER_TEST_MODEL=mlx-community/whisper-tiny-mlx \
-  uv run pytest -q test_beam_search.py test_beam_search_integration.py
+  uv run pytest -q tests/test_beam_search.py tests/test_beam_search_integration.py
 uv run python experiments/beam_search.py \
   --model mlx-community/whisper-medium-mlx --beam 5 \
   --variant baseline --output /tmp/beam-baseline.json

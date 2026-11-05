@@ -227,17 +227,17 @@ uv run python experiments/beam_search.py \
 # Repeat with --variant compact, cache, shared; --beam 1, 3, 5;
 # whisper-tiny-mlx; and --timestamps for the additional beam-5 cases.
 uv run python experiments/beam_selection.py > /tmp/beam-selection.json
-uv run pytest -q test_beam_search.py experiments/test_beam_search_experiments.py
+uv run pytest -q tests/test_beam_search.py tests/test_beam_search_experiments.py
 EXPERIMENT_MODEL=/path/to/local/whisper-tiny-mlx/snapshot \
-  uv run pytest -q experiments/test_beam_search_experiments.py
+  uv run pytest -q tests/test_beam_search_experiments.py
 RUN_MLX_WHISPER_INTEGRATION=1 \
   MLX_WHISPER_TEST_MODEL=mlx-community/whisper-tiny-mlx \
-  uv run pytest -q test_beam_search_integration.py
+  uv run pytest -q tests/test_beam_search_integration.py
 ```
 
 - [Prototype benchmark](../experiments/beam_search.py)
 - [Selection microbenchmark](../experiments/beam_selection.py)
-- [Prototype regression tests](../experiments/test_beam_search_experiments.py)
+- [Prototype regression tests](../tests/test_beam_search_experiments.py)
 - [All timing/memory samples and unique outputs](../experiments/results/beam-m4.json)
 - [Selection samples](../experiments/results/selection-m4.json)
 - [Medium beam-5 CPU profiles](../experiments/results/profile-medium-5.txt)

@@ -20,6 +20,10 @@ mmlx_whisper = "mlx_whisper.cli:main"
 [dependency-groups]
 dev = ["pytest"]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
 [tool.setuptools]
 include-package-data = true
 
