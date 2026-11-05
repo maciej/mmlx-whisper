@@ -48,7 +48,7 @@ virtual environment for this checkout to keep the installations distinct.
 From the repository root, run the beam-search test suite with:
 
 ```sh
-uv run pytest -q test_beam_search.py test_beam_search_integration.py
+uv run pytest -q test_beam_search.py test_beam_selection.py test_beam_search_integration.py
 ```
 
 The model-backed tests are opt-in with `RUN_MLX_WHISPER_INTEGRATION=1` and may
@@ -80,6 +80,8 @@ uv run mmlx_whisper audio_file.mp3 --beam-size 5 --temperature 0
 `--patience` and `--length-penalty` provide additional beam-search controls.
 See [docs/beam-search.md](docs/beam-search.md) for the current implementation
 and its design history.
+See the [MLX selection benchmark](benchmarks/beam_selection/README.md) and
+[recorded results](benchmarks/beam_selection/RESULTS.md) for methodology and measurements.
 
 You can also pipe the audio content of other programs via stdin:
 
