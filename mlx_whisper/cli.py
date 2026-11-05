@@ -7,6 +7,7 @@ import traceback
 import warnings
 
 from . import audio
+from .boosting import PhraseBoostingConfig
 from .tokenizer import LANGUAGES, TO_LANGUAGE_CODE
 from .transcribe import transcribe
 from .writers import get_writer
@@ -32,6 +33,13 @@ def build_parser():
     )
 
     parser.add_argument("audio", nargs="+", help="Audio file(s) to transcribe")
+    parser.add_argument("--phrases-file", help="UTF-8 text file, one phrase per line")
+    parser.add_argument(
+        "--phrase-boost-strength",
+        type=float,
+        default=0.1,
+        help="TurboBias strength; zero disables boosting",
+    )
 
     parser.add_argument(
         "--model",
@@ -238,6 +246,17 @@ def main():
         warnings.warn("--max-line-count has no effect without --max-line-width")
     if writer_args["max_words_per_line"] and writer_args["max_line_width"]:
         warnings.warn("--max-words-per-line has no effect with --max-line-width")
+
+    phrases_file = args.pop("phrases_file")
+    try:
+        args["phrase_boosting"] = PhraseBoostingConfig(
+            strength=args.pop("phrase_boost_strength")
+        )
+        if phrases_file:
+            with open(phrases_file, encoding="utf-8") as handle:
+                args["phrases"] = [line.strip() for line in handle if line.strip()]
+    except (OSError, ValueError) as error:
+        parser.error(str(error))
 
     for audio_obj in args.pop("audio"):
         if audio_obj == "-":

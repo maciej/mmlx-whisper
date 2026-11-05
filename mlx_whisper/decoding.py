@@ -2,14 +2,28 @@
 
 import zlib
 from dataclasses import dataclass, field, replace
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+)
 
 import mlx.core as mx
 import numpy as np
 from mlx.utils import tree_map
 
 from .audio import CHUNK_LENGTH
+from .boosting import PhraseBoostingConfig, make_phrase_scorer
 from .tokenizer import Tokenizer, get_tokenizer
+
+if TYPE_CHECKING:
+    from .whisper import Whisper
 
 
 def compression_ratio(text) -> float:
@@ -112,6 +126,10 @@ class DecodingOptions:
     without_timestamps: bool = False  # use <|notimestamps|> to sample text tokens only
     max_initial_timestamp: Optional[float] = 1.0
 
+    # Optional TurboBias scoring. Empty phrases or zero strength take the baseline path.
+    phrases: Optional[Sequence[str]] = None
+    phrase_boosting: PhraseBoostingConfig = field(default_factory=PhraseBoostingConfig)
+
     # implementation details
     fp16: bool = True  # use fp16 for most of the calculation
     return_candidates: bool = False  # include all decoded beam/best-of candidates
@@ -129,6 +147,8 @@ class DecodingResult:
     temperature: float = np.nan
     compression_ratio: float = np.nan
     candidates: List[Dict[str, Any]] = field(default_factory=list)
+    search_score: Optional[float] = None  # unnormalized fused sequence score
+    boost_score: Optional[float] = None  # cumulative external reward
 
 
 class Inference:
@@ -193,7 +213,7 @@ class MaximumLikelihoodRanker(SequenceRanker):
             result = []
             for logprob, length in zip(logprobs, lengths):
                 if self.length_penalty is None:
-                    penalty = length
+                    penalty = max(length, 1)
                 else:
                     # from the Google NMT paper
                     penalty = ((5 + length) / 6) ** self.length_penalty
@@ -273,22 +293,47 @@ def categorical(logits, temp):
 
 
 class GreedyDecoder(TokenDecoder):
-    def __init__(self, temperature: float, eot: int):
+    def __init__(self, temperature: float, eot: int, phrase_scorer=None):
         self.temperature = temperature
         self.eot = eot
+        self.phrase_scorer = phrase_scorer
+        self.reset()
+
+    def reset(self):
+        self.phrase_states = None
+        self.boost_totals = None
+        self.final_boosts = None
 
     def update(
         self, tokens: mx.array, logits: mx.array, sum_logprobs: mx.array
     ) -> Tuple[mx.array, bool, mx.array]:
-        if self.temperature == 0:
-            next_tokens = logits.argmax(axis=-1)
-        else:
-            next_tokens = categorical(logits, self.temperature)
-
         logprobs = logits - mx.logsumexp(logits, axis=-1, keepdims=True)
+        selection_scores = logits
+        if self.phrase_scorer is not None:
+            if self.phrase_states is None:
+                self.phrase_states = mx.zeros(tokens.shape[0], mx.int32)
+                self.boost_totals = mx.zeros(tokens.shape[0], mx.float32)
+            bonuses, destinations = self.phrase_scorer.advance(self.phrase_states)
+            logprobs = logprobs + bonuses
+            selection_scores = logprobs
+        if self.temperature == 0:
+            next_tokens = selection_scores.argmax(axis=-1)
+        else:
+            next_tokens = categorical(selection_scores, self.temperature)
 
-        current_logprobs = logprobs[mx.arange(logprobs.shape[0]), next_tokens]
-        sum_logprobs += current_logprobs * (tokens[:, -1] != self.eot)
+        rows = mx.arange(logprobs.shape[0])
+        alive = tokens[:, -1] != self.eot
+        current_logprobs = logprobs[rows, next_tokens]
+        sum_logprobs += mx.where(alive, current_logprobs, 0.0)
+        if self.phrase_scorer is not None:
+            self.boost_totals = self.boost_totals + mx.where(
+                alive, bonuses[rows, next_tokens], 0.0
+            )
+            self.phrase_states = mx.where(
+                alive, destinations[rows, next_tokens], self.phrase_states
+            )
+            # Realize bookkeeping each step instead of retaining a long lazy graph.
+            mx.async_eval(self.phrase_states, self.boost_totals)
 
         eot_mask = tokens[:, -1] == self.eot
         next_tokens = next_tokens * (1 - eot_mask) + self.eot * eot_mask
@@ -298,6 +343,8 @@ class GreedyDecoder(TokenDecoder):
         return tokens, completed, sum_logprobs
 
     def finalize(self, tokens: mx.array, sum_logprobs: mx.array):
+        if self.phrase_scorer is not None:
+            self.final_boosts = self.boost_totals.reshape(sum_logprobs.shape)
         # make sure each sequence has at least one EOT token at the end
         tokens = mx.pad(tokens, [(0, 0), (0, 0), (0, 1)], constant_values=self.eot)
         return tokens, sum_logprobs
@@ -318,22 +365,27 @@ class BeamSearchDecoder(TokenDecoder):
         eot: int,
         inference: Inference,
         patience: Optional[float] = None,
+        phrase_scorer=None,
     ):
         self.beam_size = beam_size
         self.eot = eot
         self.inference = inference
         self.patience = patience or 1.0
         self.max_candidates = round(beam_size * self.patience)
-        self.finished_sequences = None
-        self.selected_parent_indices = None
+        self.phrase_scorer = phrase_scorer
+        self.reset()
 
-        assert (
-            self.max_candidates > 0
-        ), f"Invalid beam size ({beam_size}) or patience ({patience})"
+        assert self.max_candidates > 0, (
+            f"Invalid beam size ({beam_size}) or patience ({patience})"
+        )
 
     def reset(self):
         self.finished_sequences = None
         self.selected_parent_indices = None
+        self.phrase_states = None
+        self.boost_totals = None
+        self.finished_boosts = None
+        self.final_boosts = None
 
     def update(
         self, tokens: mx.array, logits: mx.array, sum_logprobs: mx.array
@@ -348,6 +400,16 @@ class BeamSearchDecoder(TokenDecoder):
         logprobs = logits.astype(mx.float32) - mx.logsumexp(
             logits.astype(mx.float32), axis=-1, keepdims=True
         )
+
+        if self.phrase_scorer is not None:
+            if self.phrase_states is None:
+                self.phrase_states = mx.zeros(tokens.shape[0], mx.int32)
+                self.boost_totals = mx.zeros(tokens.shape[0], mx.float32)
+                self.finished_boosts = [{} for _ in range(n_audio)]
+            bonuses, destinations = self.phrase_scorer.advance(self.phrase_states)
+            # Add after normalization; never normalize the external reward away.
+            logprobs = logprobs + bonuses
+            cumulative_boosts = self.boost_totals[:, None] + bonuses
 
         # Stable descending sort: equal scores prefer the lower token id.
         # Only B+1 expansions per parent can affect the B surviving beams.
@@ -384,23 +446,27 @@ class BeamSearchDecoder(TokenDecoder):
         active = ranked_valid & (ranked_tokens != self.eot)
         active_count = mx.cumsum(active, axis=-1)
         finished = (
-            ranked_valid
-            & (ranked_tokens == self.eot)
-            & (active_count < self.beam_size)
+            ranked_valid & (ranked_tokens == self.eot) & (active_count < self.beam_size)
         )
-        selected = mx.argsort((~active).astype(mx.int32), axis=-1)[:, :self.beam_size]
+        selected = mx.argsort((~active).astype(mx.int32), axis=-1)[:, : self.beam_size]
         self.selected_parent_indices = mx.take_along_axis(
             ranked_parents, selected, axis=-1
         ).reshape(-1)
-        selected_tokens = mx.take_along_axis(
-            ranked_tokens, selected, axis=-1
-        ).reshape(-1).astype(tokens.dtype)
+        selected_tokens = (
+            mx.take_along_axis(ranked_tokens, selected, axis=-1)
+            .reshape(-1)
+            .astype(tokens.dtype)
+        )
         next_logprobs = mx.take_along_axis(ranked_scores, selected, axis=-1).reshape(-1)
 
         # Compact host reads for EOS bookkeeping; never copy vocabulary scores.
         mx.eval(
-            finished, ranked_parents, ranked_scores, self.selected_parent_indices,
-            selected_tokens, next_logprobs,
+            finished,
+            ranked_parents,
+            ranked_scores,
+            self.selected_parent_indices,
+            selected_tokens,
+            next_logprobs,
         )
         finished_rows = finished.tolist()
         finished_sequences = []
@@ -410,10 +476,21 @@ class BeamSearchDecoder(TokenDecoder):
                 eos_parents = ranked_parents[i, positions]
                 sequences = tokens[eos_parents].tolist()
                 values = ranked_scores[i, positions].tolist()
-                finished_sequences.append({
-                    tuple(sequence + [self.eot]): value
-                    for sequence, value in zip(sequences, values)
-                })
+                if self.phrase_scorer is not None:
+                    # Only finished EOS rewards cross to the CPU archive.
+                    eos_boosts = cumulative_boosts[eos_parents, self.eot].tolist()
+                    self.finished_boosts[i].update(
+                        {
+                            tuple(sequence + [self.eot]): reward
+                            for sequence, reward in zip(sequences, eos_boosts)
+                        }
+                    )
+                finished_sequences.append(
+                    {
+                        tuple(sequence + [self.eot]): value
+                        for sequence, value in zip(sequences, values)
+                    }
+                )
             else:
                 finished_sequences.append({})
         tokens = mx.concatenate(
@@ -421,6 +498,11 @@ class BeamSearchDecoder(TokenDecoder):
         )
         sum_logprobs = next_logprobs.astype(sum_logprobs.dtype)
         self.inference.rearrange_kv_cache(self.selected_parent_indices.tolist())
+        if self.phrase_scorer is not None:
+            parents = self.selected_parent_indices
+            self.phrase_states = destinations[parents, selected_tokens]
+            self.boost_totals = cumulative_boosts[parents, selected_tokens]
+            mx.eval(self.phrase_states, self.boost_totals)
 
         assert len(self.finished_sequences) == len(finished_sequences)
         for previously_finished, newly_finished in zip(
@@ -433,6 +515,13 @@ class BeamSearchDecoder(TokenDecoder):
             previously_finished.clear()
             previously_finished.update(sorted_sequences)
 
+        if self.phrase_scorer is not None:
+            self.finished_boosts = [
+                {seq: rewards[seq] for seq in finished}
+                for rewards, finished in zip(
+                    self.finished_boosts, self.finished_sequences
+                )
+            ]
         completed = all(
             len(sequences) >= self.max_candidates
             for sequences in self.finished_sequences
@@ -447,11 +536,16 @@ class BeamSearchDecoder(TokenDecoder):
         tokens_np = np.array(tokens)
         sum_logprobs_np = np.array(sum_logprobs)
 
+        if self.phrase_scorer is not None:
+            active_boosts = np.array(self.boost_totals).reshape(sum_logprobs.shape)
         for i, sequences in enumerate(self.finished_sequences):
             if len(sequences) < self.beam_size:
                 for j in np.argsort(sum_logprobs_np[i])[::-1]:
                     sequence = tuple(tokens_np[i, j].tolist() + [self.eot])
                     sequences[sequence] = float(sum_logprobs_np[i, j])
+                    if self.phrase_scorer is not None:
+                        # Synthetic EOT at the length limit earns no additional reward.
+                        self.finished_boosts[i][sequence] = float(active_boosts[i, j])
                     if len(sequences) >= self.beam_size:
                         break
 
@@ -477,6 +571,12 @@ class BeamSearchDecoder(TokenDecoder):
                 padded_tokens[i, j, : len(sequence)] = sequence
                 padded_logprobs[i, j] = sequences[sequence]
 
+        if self.phrase_scorer is not None:
+            boosts = np.zeros(padded_logprobs.shape, np.float32)
+            for i, sequences in enumerate(self.finished_sequences):
+                for j, sequence in enumerate(sequences):
+                    boosts[i, j] = self.finished_boosts[i][sequence]
+            self.final_boosts = mx.array(boosts)
         return mx.array(padded_tokens, dtype=tokens.dtype), mx.array(
             padded_logprobs, dtype=sum_logprobs.dtype
         )
@@ -631,16 +731,30 @@ class DecodingTask:
         # sequence ranker: implements how to rank a group of sampled sequences
         self.sequence_ranker = MaximumLikelihoodRanker(options.length_penalty)
 
+        self.phrase_scorer = None
+        if options.phrases and options.phrase_boosting.strength != 0:
+            self.phrase_scorer = make_phrase_scorer(
+                tokenizer, options.phrases, model.dims.n_vocab, options.phrase_boosting
+            )
+
         # decoder: implements how to select the next tokens, given the autoregressive distribution
         if options.beam_size is not None:
+            boosting_kwargs = (
+                {"phrase_scorer": self.phrase_scorer}
+                if self.phrase_scorer is not None
+                else {}
+            )
             self.decoder = BeamSearchDecoder(
                 options.beam_size,
                 tokenizer.eot,
                 self.inference,
                 options.patience,
+                **boosting_kwargs,
             )
         else:
-            self.decoder = GreedyDecoder(options.temperature, tokenizer.eot)
+            self.decoder = GreedyDecoder(
+                options.temperature, tokenizer.eot, self.phrase_scorer
+            )
 
         # logit filters: applies various rules to suppress or penalize certain tokens
         self.logit_filters = []
@@ -667,6 +781,10 @@ class DecodingTask:
             )
 
     def _verify_options(self, options: DecodingOptions) -> DecodingOptions:
+        if not isinstance(options.phrase_boosting, PhraseBoostingConfig):
+            raise TypeError("phrase_boosting must be a PhraseBoostingConfig")
+        if isinstance(options.phrases, str):
+            raise TypeError("phrases must be a sequence of strings, not a string")
         if options.beam_size is not None and options.best_of is not None:
             raise ValueError("beam_size and best_of can't be given together")
         if options.temperature == 0:
@@ -804,6 +922,8 @@ class DecodingTask:
         mx.async_eval(completed, tokens, sum_logprobs, no_speech_probs)
 
         for i in range(1, self.sample_len):
+            if self.phrase_scorer is not None and completed:
+                break
             inputs = tokens[:, -1:]
             if tokens.shape[-1] > self.n_ctx:
                 break
@@ -886,10 +1006,27 @@ class DecodingTask:
         # select the top-ranked sample in each group
         scores = self.sequence_ranker.scores(tokens, sum_logprobs)
         selected = [int(i) for i in self.sequence_ranker.rank(tokens, sum_logprobs)]
+        boosts = self.decoder.final_boosts if self.phrase_scorer is not None else None
+        boost_groups = boosts.tolist() if boosts is not None else None
+        model_groups = (
+            [
+                [score - boost for score, boost in zip(group, rewards)]
+                for group, rewards in zip(sum_logprobs, boost_groups)
+            ]
+            if boost_groups is not None
+            else sum_logprobs
+        )
         candidate_groups: List[List[Dict[str, Any]]] = []
         if self.options.return_candidates:
-            for group_tokens, group_logprobs, group_scores, group_eot, group_eot_idx, selected_idx in zip(
-                tokens, sum_logprobs, scores, ended_with_eot, eot_indices, selected
+            for group_idx, (
+                group_tokens,
+                group_logprobs,
+                group_scores,
+                group_eot,
+                group_eot_idx,
+                selected_idx,
+            ) in enumerate(
+                zip(tokens, model_groups, scores, ended_with_eot, eot_indices, selected)
             ):
                 ranked_indices = sorted(
                     range(len(group_tokens)),
@@ -921,12 +1058,23 @@ class DecodingTask:
                             "compression_ratio": compression_ratio(candidate_text),
                         }
                     )
+                    if boost_groups is not None:
+                        group_candidates[-1].update(
+                            search_score=float(sum_logprobs[group_idx][index]),
+                            boost_score=float(boost_groups[group_idx][index]),
+                        )
                 candidate_groups.append(group_candidates)
 
         tokens: List[List[int]] = [t[i] for i, t in zip(selected, tokens)]
         texts: List[str] = [tokenizer.decode(t).strip() for t in tokens]
 
-        sum_logprobs: List[float] = [lp[i] for i, lp in zip(selected, sum_logprobs)]
+        selected_search = [lp[i] for i, lp in zip(selected, sum_logprobs)]
+        selected_boost = (
+            [lp[i] for i, lp in zip(selected, boost_groups)]
+            if boost_groups is not None
+            else None
+        )
+        sum_logprobs: List[float] = [lp[i] for i, lp in zip(selected, model_groups)]
         avg_logprobs: List[float] = [
             lp / (len(t) + 1) for t, lp in zip(tokens, sum_logprobs)
         ]
@@ -956,6 +1104,12 @@ class DecodingTask:
                 no_speech_prob=no_speech_prob,
                 temperature=self.options.temperature,
                 compression_ratio=compression_ratio(text),
+                search_score=selected_search[index]
+                if selected_boost is not None
+                else None,
+                boost_score=selected_boost[index]
+                if selected_boost is not None
+                else None,
                 candidates=(
                     candidate_groups[index] if self.options.return_candidates else []
                 ),
