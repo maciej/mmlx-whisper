@@ -304,6 +304,14 @@ class GreedyDecoder(TokenDecoder):
 
 
 class BeamSearchDecoder(TokenDecoder):
+    """Beam expansion on MLX with a small CPU archive of finished hypotheses.
+
+    After each update, ``selected_parent_indices`` is a flat MLX index array:
+    output row k descends from input row selected_parent_indices[k]. Indices
+    include the audio batch offset; reset clears them. Independent per-beam
+    state can gather with the same indices as tokens and the KV cache.
+    """
+
     def __init__(
         self,
         beam_size: int,
@@ -317,6 +325,7 @@ class BeamSearchDecoder(TokenDecoder):
         self.patience = patience or 1.0
         self.max_candidates = round(beam_size * self.patience)
         self.finished_sequences = None
+        self.selected_parent_indices = None
 
         assert (
             self.max_candidates > 0
@@ -324,6 +333,7 @@ class BeamSearchDecoder(TokenDecoder):
 
     def reset(self):
         self.finished_sequences = None
+        self.selected_parent_indices = None
 
     def update(
         self, tokens: mx.array, logits: mx.array, sum_logprobs: mx.array
@@ -339,53 +349,78 @@ class BeamSearchDecoder(TokenDecoder):
             logits.astype(mx.float32), axis=-1, keepdims=True
         )
 
-        # MLX's stable sort gives equal scores ascending token-ID order. Keep
-        # scores unmodified and transfer only the candidates, not the vocabulary.
-        top_indices = mx.argsort(-logprobs, axis=-1)[:, : self.beam_size + 1]
-        top_logprobs = mx.take_along_axis(logprobs, top_indices, axis=-1)
-        mx.eval(tokens, top_indices, top_logprobs, sum_logprobs)
-        tokens_np = np.array(tokens)
-        top_indices_np = np.array(top_indices)
-        top_logprobs_np = np.array(top_logprobs)
-        sum_logprobs_np = np.array(sum_logprobs)
+        # Stable descending sort: equal scores prefer the lower token id.
+        # Only B+1 expansions per parent can affect the B surviving beams.
+        width = min(self.beam_size + 1, logits.shape[-1])
+        top = mx.argsort(-logprobs, axis=-1)[:, :width]
+        scores = mx.take_along_axis(logprobs, top, axis=-1)
+        scores = (scores + sum_logprobs[:, None]).reshape(n_audio, -1)
+        top = top.reshape(n_audio, -1)
+        count = self.beam_size * width
+        parents = mx.broadcast_to(
+            mx.arange(self.beam_size)[:, None], (self.beam_size, width)
+        ).reshape(-1)
 
-        next_tokens = []
-        next_logprobs = []
-        source_indices = []
+        # Compare prefixes once per pair of beams, then expand to candidates.
+        prefixes = tokens.reshape(n_audio, self.beam_size, -1)
+        same_prefix = mx.all(prefixes[:, :, None] == prefixes[:, None, :], axis=-1)
+        duplicate = same_prefix[:, parents[:, None], parents[None, :]]
+        duplicate = duplicate & (top[:, :, None] == top[:, None, :])
+        ordinal = mx.arange(count)
+        better = (scores[:, None, :] > scores[:, :, None]) | (
+            (scores[:, None, :] == scores[:, :, None])
+            & (ordinal[None, :] < ordinal[:, None])
+        )
+        keep = ~mx.any(duplicate & better, axis=-1)
+        order = mx.argsort(-scores, axis=-1)
+        # A separate validity sort retains genuine -inf candidates (suppression).
+        valid = mx.take_along_axis(keep, order, axis=-1)
+        validity_order = mx.argsort((~valid).astype(mx.int32), axis=-1)
+        order = mx.take_along_axis(order, validity_order, axis=-1)
+        ranked_tokens = mx.take_along_axis(top, order, axis=-1)
+        ranked_scores = mx.take_along_axis(scores, order, axis=-1)
+        ranked_valid = mx.take_along_axis(keep, order, axis=-1)
+        ranked_parents = parents[order] + mx.arange(n_audio)[:, None] * self.beam_size
+        active = ranked_valid & (ranked_tokens != self.eot)
+        active_count = mx.cumsum(active, axis=-1)
+        finished = (
+            ranked_valid
+            & (ranked_tokens == self.eot)
+            & (active_count < self.beam_size)
+        )
+        selected = mx.argsort((~active).astype(mx.int32), axis=-1)[:, :self.beam_size]
+        self.selected_parent_indices = mx.take_along_axis(
+            ranked_parents, selected, axis=-1
+        ).reshape(-1)
+        selected_tokens = mx.take_along_axis(
+            ranked_tokens, selected, axis=-1
+        ).reshape(-1).astype(tokens.dtype)
+        next_logprobs = mx.take_along_axis(ranked_scores, selected, axis=-1).reshape(-1)
+
+        # Compact host reads for EOS bookkeeping; never copy vocabulary scores.
+        mx.eval(
+            finished, ranked_parents, ranked_scores, self.selected_parent_indices,
+            selected_tokens, next_logprobs,
+        )
+        finished_rows = finished.tolist()
         finished_sequences = []
-
-        for i in range(n_audio):
-            scores = {}
-            sources = {}
-            finished = {}
-
-            for j in range(self.beam_size):
-                idx = i * self.beam_size + j
-                prefix = tokens_np[idx].tolist()
-                for token, logprob in zip(top_indices_np[idx], top_logprobs_np[idx]):
-                    score = float(sum_logprobs_np[idx] + logprob)
-                    sequence = tuple(prefix + [int(token)])
-                    if sequence not in scores or score > scores[sequence]:
-                        scores[sequence] = score
-                        sources[sequence] = idx
-
-            saved = 0
-            for sequence in sorted(scores, key=scores.get, reverse=True):
-                if sequence[-1] == self.eot:
-                    finished[sequence] = scores[sequence]
-                else:
-                    next_tokens.append(sequence)
-                    next_logprobs.append(scores[sequence])
-                    source_indices.append(sources[sequence])
-                    saved += 1
-                    if saved == self.beam_size:
-                        break
-
-            finished_sequences.append(finished)
-
-        tokens = mx.array(next_tokens, dtype=tokens.dtype)
-        sum_logprobs = mx.array(next_logprobs, dtype=sum_logprobs.dtype)
-        self.inference.rearrange_kv_cache(source_indices)
+        for i, flags in enumerate(finished_rows):
+            positions = [j for j, flag in enumerate(flags) if flag]
+            if positions:
+                eos_parents = ranked_parents[i, positions]
+                sequences = tokens[eos_parents].tolist()
+                values = ranked_scores[i, positions].tolist()
+                finished_sequences.append({
+                    tuple(sequence + [self.eot]): value
+                    for sequence, value in zip(sequences, values)
+                })
+            else:
+                finished_sequences.append({})
+        tokens = mx.concatenate(
+            [tokens[self.selected_parent_indices], selected_tokens[:, None]], axis=-1
+        )
+        sum_logprobs = next_logprobs.astype(sum_logprobs.dtype)
+        self.inference.rearrange_kv_cache(self.selected_parent_indices.tolist())
 
         assert len(self.finished_sequences) == len(finished_sequences)
         for previously_finished, newly_finished in zip(

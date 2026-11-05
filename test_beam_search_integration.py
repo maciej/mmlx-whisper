@@ -3,6 +3,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import mlx.core as mx
 
@@ -23,6 +24,26 @@ TEST_AUDIO = os.path.join(
     "set RUN_MLX_WHISPER_INTEGRATION=1 to run MLX Whisper integration tests",
 )
 class TestBeamSearchIntegration(unittest.TestCase):
+    def test_baseline_candidate_equivalence(self):
+        from benchmarks.beam_selection.baseline_decoding import BeamSearchDecoder as Baseline
+        from mlx_whisper.decoding import BeamSearchDecoder
+
+        model = load_model(MODEL_NAME, mx.float16)
+        data = audio.pad_or_trim(audio.load_audio(TEST_AUDIO))
+        mel = audio.log_mel_spectrogram(data, n_mels=model.dims.n_mels)
+        for timestamps, patience, penalty in [(False, 1.0, None), (True, 1.5, 0.6)]:
+            outputs = []
+            for decoder in [Baseline, BeamSearchDecoder]:
+                with patch("mlx_whisper.decoding.BeamSearchDecoder", decoder):
+                    results = model.decode(
+                        mx.stack([mel, mel]), beam_size=3, temperature=0,
+                        language="en", without_timestamps=not timestamps,
+                        patience=patience, length_penalty=penalty,
+                        return_candidates=True,
+                    )
+                outputs.append([(r.tokens, r.text, r.avg_logprob, r.candidates) for r in results])
+            self.assertEqual(outputs[0], outputs[1])
+
     def test_transcribe_without_timestamps(self):
         result = mlx_whisper.transcribe(
             TEST_AUDIO,
