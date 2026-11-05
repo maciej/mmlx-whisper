@@ -46,8 +46,8 @@ From the repository root, in an environment with MLX and the project's test
 requirements, on an Apple GPU:
 
 ```sh
-python -m pytest -q test_beam_search.py test_beam_selection.py
-RUN_MLX_WHISPER_INTEGRATION=1 python -m pytest -q test_beam_search_integration.py
+uv run pytest -q tests/test_beam_search.py tests/test_beam_selection.py
+RUN_MLX_WHISPER_INTEGRATION=1 uv run pytest -q tests/test_beam_search_integration.py
 python -m benchmarks.beam_selection --output /tmp/beam-results.json
 ```
 

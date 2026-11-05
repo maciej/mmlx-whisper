@@ -46,15 +46,17 @@ virtual environment for this checkout to keep the installations distinct.
 
 ### Development and tests
 
-From the repository root, run the beam-search test suite with:
+From the repository root, run the recorder, beam-search, and prototype tests with:
 
 ```sh
-uv run pytest -q test_beam_search.py test_beam_selection.py test_beam_search_integration.py
+uv run pytest -q
 ```
 
 The model-backed tests are opt-in with `RUN_MLX_WHISPER_INTEGRATION=1` and may
 download a model. See [the beam-search guide](docs/beam-search.md#verification)
 for the integration command and coverage.
+The legacy conversion and numerical suite remains explicitly runnable with
+`uv run pytest -q tests/test.py`; it may download model weights.
 
 ### Run
 
@@ -148,6 +150,10 @@ To see more transcription options use:
 ```
 >>> help(mlx_whisper.transcribe)
 ```
+
+### Tools
+
+Record local evaluation clips with the standalone [recorder](docs/recording.md).
 
 ### Converting models
 
