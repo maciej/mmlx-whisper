@@ -9,7 +9,11 @@ description = "OpenAI Whisper on Apple silicon with MLX and the Hugging Face Hub
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "MIT" }
-authors = [{ name = "MLX Contributors", email = "mlx@group.apple.com" }]
+authors = [
+    { name = "MLX Contributors", email = "mlx@group.apple.com" },
+    { name = "mmlx-whisper contributors" },
+]
+maintainers = [{ name = "Maciej Biłas" }]
 
 [project.urls]
 Repository = "https://github.com/maciej/mmlx-whisper"

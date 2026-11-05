@@ -10,7 +10,8 @@ extracted from [`maciej/mlx-examples`](https://github.com/maciej/mlx-examples)
 with its Whisper-specific history. This repository contains the package,
 CLI, model conversion script, and tests; it can be installed and developed
 independently of the MLX Examples repository. It retains the original MIT
-license. Its package and command names are:
+license. This fork is maintained independently of Apple. Its package and command
+names are:
 
 - Python distribution: `mlx-whisper`
 - Python import: `mlx_whisper`
