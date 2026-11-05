@@ -1,4 +1,4 @@
-# Beam search specification
+# Beam search
 
 Beam search maintains several competing partial transcripts for each audio item.
 This document describes the implemented decoding behavior and its interfaces.
