@@ -1,0 +1,116 @@
+{
+  "device": {
+    "device_name": "Apple M5",
+    "max_recommended_working_set_size": 19069665280,
+    "memory_size": 25769803776,
+    "architecture": "applegpu_g17g",
+    "max_buffer_length": 14302248960,
+    "resource_limit": 499000
+  },
+  "mlx": "0.32.0",
+  "vocab_size": 51865,
+  "dtype": "float32 scores/int32 states",
+  "iterations": 30,
+  "results": [
+    {
+      "phrases": 10,
+      "states": 31,
+      "batch": 1,
+      "compile_ms": 0.024582957848906517,
+      "median_query_ms": 0.6985630607232451,
+      "max_score_error": 1.4901161138336505e-09,
+      "state_mismatches": 0,
+      "peak_mlx_bytes": 4457798
+    },
+    {
+      "phrases": 10,
+      "states": 31,
+      "batch": 5,
+      "compile_ms": 0.024582957848906517,
+      "median_query_ms": 1.0800829622894526,
+      "max_score_error": 1.807185884272755e-08,
+      "state_mismatches": 0,
+      "peak_mlx_bytes": 25466072
+    },
+    {
+      "phrases": 50,
+      "states": 151,
+      "batch": 1,
+      "compile_ms": 0.07491698488593102,
+      "median_query_ms": 0.5843545077368617,
+      "max_score_error": 1.4901161138336505e-09,
+      "state_mismatches": 0,
+      "peak_mlx_bytes": 4464207
+    },
+    {
+      "phrases": 50,
+      "states": 151,
+      "batch": 5,
+      "compile_ms": 0.07491698488593102,
+      "median_query_ms": 0.7351459935307503,
+      "max_score_error": 1.807185884272755e-08,
+      "state_mismatches": 0,
+      "peak_mlx_bytes": 25486552
+    },
+    {
+      "phrases": 200,
+      "states": 599,
+      "batch": 1,
+      "compile_ms": 0.3872921224683523,
+      "median_query_ms": 0.589791452512145,
+      "max_score_error": 1.4901161138336505e-09,
+      "state_mismatches": 0,
+      "peak_mlx_bytes": 4491963
+    },
+    {
+      "phrases": 200,
+      "states": 599,
+      "batch": 5,
+      "compile_ms": 0.3872921224683523,
+      "median_query_ms": 0.6801040144637227,
+      "max_score_error": 1.807185884272755e-08,
+      "state_mismatches": 0,
+      "peak_mlx_bytes": 25563108
+    },
+    {
+      "phrases": 1000,
+      "states": 2994,
+      "batch": 1,
+      "compile_ms": 0.8225420024245977,
+      "median_query_ms": 0.5794789176434278,
+      "max_score_error": 1.4901161138336505e-09,
+      "state_mismatches": 0,
+      "peak_mlx_bytes": 4617195
+    },
+    {
+      "phrases": 1000,
+      "states": 2994,
+      "batch": 5,
+      "compile_ms": 0.8225420024245977,
+      "median_query_ms": 0.7215408841148019,
+      "max_score_error": 1.807185884272755e-08,
+      "state_mismatches": 0,
+      "peak_mlx_bytes": 26229608
+    },
+    {
+      "phrases": 20000,
+      "states": 56498,
+      "batch": 1,
+      "compile_ms": 22.443291964009404,
+      "median_query_ms": 1.522646052762866,
+      "max_score_error": 1.4901161138336505e-09,
+      "state_mismatches": 0,
+      "peak_mlx_bytes": 7672991
+    },
+    {
+      "phrases": 20000,
+      "states": 56498,
+      "batch": 5,
+      "compile_ms": 22.443291964009404,
+      "median_query_ms": 1.0959170758724213,
+      "max_score_error": 1.807185884272755e-08,
+      "state_mismatches": 0,
+      "peak_mlx_bytes": 34504892
+    }
+  ]
+}

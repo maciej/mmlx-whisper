@@ -127,7 +127,12 @@ def transcribe(
         to make it more likely to predict those word correctly.
 
     decode_options: dict
-        Keyword arguments to construct `DecodingOptions` instances
+        Keyword arguments to construct `DecodingOptions` instances. `phrases` accepts a
+        list of contextual phrases; `phrase_boosting` accepts a PhraseBoostingConfig.
+        Empty phrases or strength=0 preserve baseline decoding. Matching resets on
+        each window/retry; prompts are excluded. Sampling retries retain boosting.
+        avg_logprob excludes phrase rewards; search_score/boost_score describe the
+        whole decoded window (also when it produces multiple timestamp segments).
 
     clip_timestamps: Union[str, List[float]]
         Comma-separated list start,end,start,end,... timestamps (in seconds) of clips to process.
@@ -276,6 +281,9 @@ def transcribe(
             "compression_ratio": result.compression_ratio,
             "no_speech_prob": result.no_speech_prob,
         }
+        if result.boost_score is not None:
+            segment["search_score"] = result.search_score
+            segment["boost_score"] = result.boost_score
         if result.candidates:
             segment["candidates"] = result.candidates
         return segment

@@ -193,3 +193,26 @@ uv run python convert.py --torch-name-or-path ${model} -q --q-bits 4 --mlx-path 
 ```
 
 [^1]: Refer to the [arXiv paper](https://arxiv.org/abs/2212.04356), [blog post](https://openai.com/research/whisper), and [code](https://github.com/openai/whisper) for more details.
+
+## Phrase boosting
+
+Prefer contextual names and terminology during decoding with MLX-native
+[TurboBias](https://arxiv.org/abs/2508.07014) scoring:
+
+```python
+from mlx_whisper import PhraseBoostingConfig, transcribe
+
+result = transcribe(
+    "audio.mp3",
+    path_or_hf_repo="mlx-community/whisper-large-v3-turbo",
+    phrases=["NVIDIA DGX", "Kubernetes"],
+    phrase_boosting=PhraseBoostingConfig(strength=0.1),
+    beam_size=5,
+    temperature=0.0,
+)
+```
+
+Greedy and sampling decoding are supported too. No phrases or zero strength
+preserves the existing inference path. For CLI usage with `uv run mmlx_whisper`, pass `--phrases-file`
+(one phrase per line) and optionally `--phrase-boost-strength`.
+See [the configuration, scoring semantics, and validation guide](docs/phrase-boosting.md).
